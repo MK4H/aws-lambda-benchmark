@@ -53,7 +53,7 @@ def create_file(path: FilePath):
         raise errors.ServerError("Failed to create file")
 
 
-def handler(event, context):
+def handle(event, context):
     try:
         if "userID" not in event:
             raise errors.ArgumentError("Missing userID argument")
