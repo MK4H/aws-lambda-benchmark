@@ -47,10 +47,10 @@ namespace DotnetLambdaBenchmark
                     FilePath = path.AbsolutePath
                 };
             }
+            catch (BackendException) {
+                throw;
+            }
             catch (Exception e) {
-                if (e is BackendException) {
-                    throw;
-                }
                 LambdaLogger.Log($"Unknown top level error: {e}");
                 throw new ServerException("Unexpected error");
             }

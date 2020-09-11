@@ -21,3 +21,11 @@ dependencies {
     implementation 'software.amazon.awssdk:dynamodb'
     implementation 'software.amazon.awssdk:s3'
 }
+
+task buildZip(type: Zip) {
+    from compileJava
+    from processResources
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+}
