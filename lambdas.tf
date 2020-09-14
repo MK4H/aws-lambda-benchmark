@@ -1,12 +1,12 @@
 locals {
-    csharp_package_path     = "./csharp/DotnetLambdaBenchmark/src/DotnetLambdaBenchmark/bin/Release/DotnetLambdaBenchmark.zip"
+    csharp_package_path     = "./csharp/DotnetLambdaBenchmark/src/DotnetLambdaBenchmark/bin/Release/netcoreapp3.1/DotnetLambdaBenchmark.zip"
     go_package_path         = "./go/package.zip"
     java_package_path       = "./java/build/distributions/javatest-1.0-SNAPSHOT.zip"
     python_package_path     = "./python/package.zip"
     typescript_package_path = "./typescript/package.zip"
 
     environment_variables = {
-        TABLE_NAME = aws_dynamodb_table.test_entries.name
+        TABLE_NAME = aws_dynamodb_table.test_permissions.name
         // The bucket that will be serviced
         BUCKET_NAME = aws_s3_bucket.test_data.id
     }
@@ -35,7 +35,7 @@ module "csharp" {
     function_timeout = local.function_timeout
 
     log_retention_days = local.log_retention_days
-    policies_arn = [aws_iam_policy.benchmar_permissions.arn]
+    policies_arn = [aws_iam_policy.benchmark_permissions.arn]
 }
 
 module "go" {
@@ -56,7 +56,7 @@ module "go" {
     function_timeout = local.function_timeout
 
     log_retention_days = local.log_retention_days
-    policies_arn = [aws_iam_policy.benchmar_permissions.arn]
+    policies_arn = [aws_iam_policy.benchmark_permissions.arn]
 }
 
 module "java" {
@@ -71,13 +71,14 @@ module "java" {
 
     handler = "benchmark.Handler::handleRequest"
     runtime = "java11"
+    memory_size = 256
 
     environment_variables = local.environment_variables
 
     function_timeout = local.function_timeout
 
     log_retention_days = local.log_retention_days
-    policies_arn = [aws_iam_policy.benchmar_permissions.arn]
+    policies_arn = [aws_iam_policy.benchmark_permissions.arn]
 }
 
 module "python" {
@@ -98,7 +99,7 @@ module "python" {
     function_timeout = local.function_timeout
 
     log_retention_days = local.log_retention_days
-    policies_arn = [aws_iam_policy.benchmar_permissions.arn]
+    policies_arn = [aws_iam_policy.benchmark_permissions.arn]
 }
 
 module "typescript" {
@@ -119,5 +120,5 @@ module "typescript" {
     function_timeout = local.function_timeout
 
     log_retention_days = local.log_retention_days
-    policies_arn = [aws_iam_policy.benchmar_permissions.arn]
+    policies_arn = [aws_iam_policy.benchmark_permissions.arn]
 }

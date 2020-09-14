@@ -22,7 +22,7 @@ class PermDB:
                     "write": True,
                     "users": {path.user_id}
                 },
-                ConditionalExpression=Attr("user").not_exists()
+                ConditionExpression=Attr("user").not_exists()
             )
             return False
         except ClientError as e:
@@ -47,10 +47,10 @@ class PermDB:
                 },
             )
 
-            if response.Item is None:
+            if response["Item"] is None:
                 raise errors.NotFoundError("Master entry not found")
 
-            entry = response.Item
+            entry = response["Item"]
             entry["user"] = path.user_id
             entry["path"] = path.normalized
             return entry

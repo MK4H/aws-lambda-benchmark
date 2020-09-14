@@ -1,1 +1,3 @@
 package.zip
+.terraform
+terraform.tfstate*

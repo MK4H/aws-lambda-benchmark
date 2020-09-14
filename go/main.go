@@ -13,12 +13,12 @@ import (
 )
 
 type request struct {
-	userID string
-	filePath  string
+	UserID string `json:"userID"`
+	FilePath  string `json:"filePath"`
 }
 
 type response struct {
-	filePath string
+	FilePath string `json:"filePath"`
 }
 
 var (
@@ -50,8 +50,8 @@ func init() {
 }
 
 func createFile(userID string, path filePath.FilePath) error {
-	var entryCreate chan error
-	var objectCheck chan bool
+	entryCreate := make(chan error)
+	objectCheck := make(chan bool)
 	go func() {
 		entryCreate <- permDB.CreateMasterEntry(path)
 	}()
@@ -99,20 +99,20 @@ func createFile(userID string, path filePath.FilePath) error {
 }
 
 func handleLambdaEvent(rq request) (response, error) {
-	path, pathErr := filePath.FromAbsolute(rq.filePath)
+	path, pathErr := filePath.FromAbsolute(rq.FilePath)
 	if pathErr != nil {
 		return response{}, pathErr
 	}
 
-	if path.UserID != rq.userID {
+	if path.UserID != rq.UserID {
 		return response{}, errors.NewForbiddenError("Trying to manipulate data of another user")
 	}
 
-	err := createFile(rq.userID, path)
+	err := createFile(rq.UserID, path)
 	if err != nil {
 		return response{}, err
 	}
-	return response{filePath: rq.filePath}, nil
+	return response{FilePath: rq.FilePath}, nil
 }
 
 func main() {

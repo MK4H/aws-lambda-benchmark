@@ -32,10 +32,10 @@ resource "aws_lambda_function" "function" {
     s3_key          = aws_s3_bucket_object.deployment_package.key
 
     // Used for detecting changes in the byte code to deploy, to prevent unnecessary deployments of the same code
-    // source_code_hash = filebase64sha256(var.deployment_package_path)
+    source_code_hash = filebase64sha256(var.deployment_package_path)
     handler         = var.handler
     timeout         = var.function_timeout // seconds
-
+    memory_size     = var.memory_size
 
     tags = {
         "Project" = "LambdaBenchmark",

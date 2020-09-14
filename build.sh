@@ -2,25 +2,17 @@
 
 # C#
 
-(
-    cd ./csharp/DotnetLambdaBenchmark/src/DotnetLambdaBenchmark &&
-    dotnet publish -c Release
-)
+bash ./csharp/build.sh
 
 # Go
 
-(
-    cd ./go &&
-    go get github.com/aws/aws-lambda-go/lambda &&
-    GOOS=linux go build main.go
-)
+
+bash ./go/build.sh
+
 
 # Java
 
-(
-    cd ./java &&
-    ./gradlew buildZip
-)
+bash ./java/build.sh
 
 # Python
 
@@ -28,7 +20,4 @@
 
 # Typescript
 
-(
-    cd ./typescript &&
-    npm run build
-)
+bash ./typescript/build.sh

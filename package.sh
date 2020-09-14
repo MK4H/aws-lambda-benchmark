@@ -2,17 +2,11 @@
 
 # C#
 
-(
-    cd ./csharp/DotnetLambdaBenchmark/src/DotnetLambdaBenchmark &&
-    dotnet lambda package
-)
+bash ./csharp/package.sh
 
 # Go
 
-(
-    cd ./go &&
-    zip package.zip main
-)
+bash ./csharp/package.sh
 
 # Java
 
@@ -20,15 +14,8 @@
 
 # Python
 
-(
-    cd ./python &&
-    zip -r9 package.zip ./venv/lib/python3.8/site-packages &&
-    zip -g package.zip *.py
-)
+bash ./csharp/package.sh
 
 # Typescript
 
-(
-    cd ./typescript &&
-    zip package.zip ./publish/handler.js
-)
+bash ./csharp/package.sh

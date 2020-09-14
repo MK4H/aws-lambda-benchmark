@@ -11,7 +11,9 @@ terraform {
 
 provider "aws" {
     region = "eu-central-1"
+    profile = "personal"
 }
+
 
 resource "aws_s3_bucket" "deployment_packages" {
     bucket = "lambda-benchmark-deployment-packages"
@@ -53,7 +55,35 @@ resource "aws_s3_bucket_public_access_block" "test_data" {
     ignore_public_acls = true
 }
 
-resource "aws_iam_policy" "benchmar_permissions" {
+resource "aws_dynamodb_table" "test_permissions" {
+    name            = "lambda-benchmark-test-permissions"
+    // FUTURE: Change to PROVISIONED, it is 6x cheaper when used to 100%
+    // For testing and development, pay per request is ideal
+    billing_mode    = "PAY_PER_REQUEST"
+    hash_key        = "user"
+    range_key       = "path"
+
+    attribute {
+        name = "user"
+        type = "S"
+    }
+
+    attribute {
+        name = "path"
+        type = "S"
+    }
+
+    ttl {
+        attribute_name  = "delete-time"
+        enabled         = true
+    }
+
+    tags = {
+        "Project" = "LambdaBenchmark",
+    }
+}
+
+resource "aws_iam_policy" "benchmark_permissions" {
     name = "benchmark-permissions"
     description = "Policy containing permissions for the tested lambdas."
     policy = <<EOF
@@ -70,9 +100,10 @@ resource "aws_iam_policy" "benchmar_permissions" {
                 "dynamodb:UpdateItem",
                 "dynamodb:BatchWriteItem",
                 "dynamodb:UpdateTimeToLive",
-                "dynamodb:ConditionCheck"
+                "dynamodb:ConditionCheck",
+                "dynamodb:DescribeTable"
             ],
-            "Resource": ["${aws_dynamodb_table.file_permissions.arn}"]
+            "Resource": ["${aws_dynamodb_table.test_permissions.arn}"]
         },
         {
             "Sid": "listBucket",
@@ -80,7 +111,7 @@ resource "aws_iam_policy" "benchmar_permissions" {
             "Action": [
                 "s3:ListBucket"
             ],
-            "Resource": ["${aws_s3_bucket.user_data.arn}"]
+            "Resource": ["${aws_s3_bucket.test_data.arn}"]
         },
         {
             "Sid": "accessUserS3",
@@ -93,7 +124,7 @@ resource "aws_iam_policy" "benchmar_permissions" {
                 "s3:DeleteObject",
                 "s3:DeleteObjectTagging"
             ],
-            "Resource": ["${aws_s3_bucket.user_data.arn}/*"]
+            "Resource": ["${aws_s3_bucket.test_data.arn}/*"]
         }
     ]
 }

@@ -3,6 +3,8 @@ package benchmark;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.concurrent.CompletableFuture;
 
 public class Handler implements RequestHandler<Request, Response> {
@@ -22,7 +24,7 @@ public class Handler implements RequestHandler<Request, Response> {
                 throw new ForbiddenException("Trying to manipulate data of another user");
             }
 
-            createFile(userID, path);
+            createFile(path);
 
             return new Response(path.getAbsolute());
         }
@@ -30,7 +32,9 @@ public class Handler implements RequestHandler<Request, Response> {
             throw e;
         }
         catch (Exception e) {
-            System.out.printf("Unknown top level error: %s", e.toString());
+            StringWriter stackTrace = new StringWriter();
+            e.printStackTrace(new PrintWriter(stackTrace));
+            System.out.printf("Unknown top level error: %s", stackTrace.toString());
             throw new ServerException("Unexpected error");
         }
     }
@@ -38,7 +42,8 @@ public class Handler implements RequestHandler<Request, Response> {
     private final PermDB db;
     private final Bucket bucket;
 
-    private void createFile(String userID, FilePath path) {
+    private void createFile(FilePath path) {
+        System.out.println("Marker 0");
         var objectCheck = this.bucket.CheckObjectPresence(path);
         var entryCreate = this.db.createMasterEntry(path);
         // If CreateMasterEntry fails, just let the exception bubble out
@@ -46,13 +51,13 @@ public class Handler implements RequestHandler<Request, Response> {
 
         boolean objectExists = objectCheck.join();
         boolean entryExisted = entryCreate.join();
-
+        System.out.println("Marker 1");
         if (objectExists && entryExisted) {
             throw new ConflictException("FIle already exists");
         }
         else if (objectExists) {
             try {
-                this.db.deleteMasterEntry(path);
+                this.db.deleteMasterEntry(path).join();
             }
             catch (Exception e) {
                 System.out.printf("Failed to delete master entry after detecting existing s3 object, with error %s", e.toString());
@@ -67,7 +72,7 @@ public class Handler implements RequestHandler<Request, Response> {
         }
         catch(Exception e) {
             try {
-                this.db.deleteMasterEntry(path);
+                this.db.deleteMasterEntry(path).join();
             }
             catch (Exception dbErr) {
                 System.out.printf("Failed to delete master entry with error: %s after the creation of S3 object failed with error: %s", dbErr.toString(), e.toString());

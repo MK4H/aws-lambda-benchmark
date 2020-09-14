@@ -53,3 +53,9 @@ variable "runtime" {
     type = string
     description = "Runtime used for the deployed function."
 }
+
+variable "memory_size" {
+    type = number
+    description = "Size of memory allocated for the lambda in MB, 128-3008 in 64MB increments."
+    default = 128
+}
