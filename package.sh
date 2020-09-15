@@ -6,7 +6,7 @@ bash ./csharp/package.sh
 
 # Go
 
-bash ./csharp/package.sh
+bash ./go/package.sh
 
 # Java
 
@@ -14,8 +14,8 @@ bash ./csharp/package.sh
 
 # Python
 
-bash ./csharp/package.sh
+bash ./python/package.sh
 
 # Typescript
 
-bash ./csharp/package.sh
+bash ./typescript/package.sh

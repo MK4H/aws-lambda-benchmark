@@ -12,14 +12,12 @@ class FilePath {
         }
 
         path = path.normalize();
-        //TODO: Maybe 1
         String userID = path.getName(0).toString();
-        return new FilePath(userID, path);
+        return new FilePath(userID, Path.of("/").relativize(path));
     }
 
     public static FilePath fromNormalized(String normalizedPath) {
         Path path = Paths.get(normalizedPath);
-        //TODO: Maybe 1
         String userID = path.getName(0).toString();
         return new FilePath(userID, path);
     }

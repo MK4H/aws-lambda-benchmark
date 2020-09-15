@@ -43,7 +43,6 @@ public class Handler implements RequestHandler<Request, Response> {
     private final Bucket bucket;
 
     private void createFile(FilePath path) {
-        System.out.println("Marker 0");
         var objectCheck = this.bucket.CheckObjectPresence(path);
         var entryCreate = this.db.createMasterEntry(path);
         // If CreateMasterEntry fails, just let the exception bubble out
@@ -51,7 +50,6 @@ public class Handler implements RequestHandler<Request, Response> {
 
         boolean objectExists = objectCheck.join();
         boolean entryExisted = entryCreate.join();
-        System.out.println("Marker 1");
         if (objectExists && entryExisted) {
             throw new ConflictException("FIle already exists");
         }

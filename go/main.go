@@ -58,7 +58,7 @@ func createFile(userID string, path filePath.FilePath) error {
 
 	go func() {
 		exists, err := buck.CheckObjectPresence(path)
-		objectCheck <- exists && err != nil
+		objectCheck <- exists && err == nil
 	}()
 	createResult := <- entryCreate
 	objectExists := <- objectCheck

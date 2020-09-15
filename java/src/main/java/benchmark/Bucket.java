@@ -23,10 +23,7 @@ class Bucket {
                     .key(path.getNormalized())
                     .build()
             )
-            .handle((response, error) -> {
-                System.out.println("Object check finished");
-                return error == null;
-            });
+            .handle((response, error) -> error == null);
     }
 
     public CompletableFuture<Void> CreateObject(FilePath path) {

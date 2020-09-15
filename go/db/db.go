@@ -24,8 +24,7 @@ type MasterEntry struct {
 	Path string `dynamodbav:"path"`
 	Read bool `dynamodbav:"read"`
 	Write bool `dynamodbav:"write"`
-	Users []string `dynamodbav:"users"`
-	DeleteTime dynamodbattribute.UnixTime `dynamodbav:"delete-time,omitempty"`
+	Users []string `dynamodbav:"users,stringset"`
 }
 
 func Create(tableName string, sess *session.Session) PermDB {

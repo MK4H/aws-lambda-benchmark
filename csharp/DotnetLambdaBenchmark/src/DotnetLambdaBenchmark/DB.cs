@@ -54,8 +54,8 @@ namespace DotnetLambdaBenchmark {
             var doc = new Document();
             doc[UserProperty] = this.User;
             doc[PathProperty] = this.Path;
-            doc[ReadProperty] = this.Read;
-            doc[WriteProperty] = this.Write;
+            doc[ReadProperty] = new DynamoDBBool(this.Read);
+            doc[WriteProperty] = new DynamoDBBool(this.Write);
             doc[UsersProperty] = this.Users;
             if (this.DeleteTime != null) {
                 doc[DeleteTimeProperty] = this.DeleteTime;

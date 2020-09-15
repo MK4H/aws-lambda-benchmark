@@ -31,7 +31,7 @@ def create_file(path: FilePath):
 
     if object_exists and entry_existed:
         raise errors.ConflictError("File already exists")
-    elif not entry_existed:
+    elif object_exists and not entry_existed:
         # Delete the entry again
         try:
             permDB.delete_master_entry(path)

@@ -35,7 +35,6 @@ class PermDB {
                 ))
                 .build())
         .handle((response, error) -> {
-            System.out.println("Create master entry finished");
             if (error == null) {
                 return false;
             }

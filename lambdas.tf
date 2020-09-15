@@ -75,7 +75,7 @@ module "java" {
 
     environment_variables = local.environment_variables
 
-    function_timeout = local.function_timeout
+    function_timeout = 30
 
     log_retention_days = local.log_retention_days
     policies_arn = [aws_iam_policy.benchmark_permissions.arn]

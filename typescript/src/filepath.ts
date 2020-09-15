@@ -4,11 +4,10 @@ import { ArgumentError } from "./errors";
 export class FilePath {
     /**
      * @param pathParts Normalized path split into parts
-     * @param normalizedPath Full normalized path
      *
      * @throws ArgumentError when the provided string path is not valid.
      */
-    private constructor(pathParts: string[], normalizedPath: string) {
+    private constructor(pathParts: string[]) {
         // At least 2 elements, first empty for the user ID
         // second for the file name
         if (pathParts.length < 2) {
@@ -17,12 +16,12 @@ export class FilePath {
         this.user = pathParts[0];
 
         // Do NOT add leading slash, S3 does not like it
-        this.normPath = normalizedPath;
+        this.normPath = pathParts.join(path.posix.sep);
     }
 
     public static fromNormalized(normalizedPath: string): FilePath {
         const pathParts = normalizedPath.split(path.posix.sep);
-        return new FilePath(pathParts, normalizedPath);
+        return new FilePath(pathParts);
     }
 
     public static fromAbsolute(absolutePath: string): FilePath {
@@ -35,7 +34,7 @@ export class FilePath {
         const pathParts = normalizedPath.split(path.posix.sep);
         // Remove the leading empty string which was before the first / separator, /userID/...
         pathParts.shift();
-        return new FilePath(pathParts, normalizedPath);
+        return new FilePath(pathParts);
     }
 
     public get absolutePath(): string {

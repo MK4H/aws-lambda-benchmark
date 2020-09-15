@@ -31,8 +31,8 @@ func (b *Bucket) CheckObjectPresence(p filePath.FilePath) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	// TODO: Check this NoSuchKey, may not work
-	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == s3.ErrCodeNoSuchKey {
+
+	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFound" {
 		return false, nil
 	}
 
