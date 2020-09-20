@@ -6,12 +6,17 @@ terraform {
             source  = "hashicorp/aws"
             version = "~> 3.1.0"
         }
+
+        local = {
+            source = "hashicorp/local"
+            version = "~> 1.4.0"
+        }
     }
 }
 
 provider "aws" {
     region = "eu-central-1"
-    profile = "personal"
+    profile = var.aws_credentials_profile
 }
 
 
@@ -129,4 +134,13 @@ resource "aws_iam_policy" "benchmark_permissions" {
     ]
 }
 EOF
+}
+
+module "experiments" {
+    source = "./experiments"
+
+    aws_credentials_profile = var.aws_credentials_profile
+    lambda_functions = local.lambda_functions
+    bucket_name = aws_s3_bucket.test_data.id
+    table_name = aws_dynamodb_table.test_permissions.name
 }

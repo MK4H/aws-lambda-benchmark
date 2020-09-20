@@ -13,6 +13,14 @@ locals {
 
     function_timeout = 10 // Seconds
     log_retention_days = 3
+
+    lambda_functions = {
+        "csharp" = module.csharp.function_arn
+        "go" = module.go.function_arn
+        "java" = module.java.function_arn
+        "python" = module.python.function_arn
+        "typescript" = module.typescript.function_arn
+    }
 }
 
 module "csharp" {
