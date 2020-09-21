@@ -1,0 +1,481 @@
+---
+title: "AWS Lambda Benchmark"
+author: "Karel Maděra"
+date: "9/18/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pdf.options(encoding = 'ISOLatin2')
+library("tidyverse")
+library("grid")
+library("gridExtra")
+library("lattice")
+data <- read_csv("experiments/100rounds/data.csv")
+data_init <- data %>% filter(!is.na(`init duration`))
+data_init_no_java <- data_init %>% filter(lang != "java")
+data_no_init <- data %>% filter(is.na(`init duration`))
+data_no_init_no_java <- data_no_init %>% filter(lang != "java")
+
+data_numbered <- data %>% group_by(lang) %>% mutate(idx = row_number())
+data_numbered_no_java <- data_numbered %>% filter(lang != "java")
+```
+
+## Experiment
+
+Cílem experimentu je porovnat dobu běhu funkcí v AWS Lambda implementujících identickou funkcionalitu za použití různých programovacích jazyků a z nich vyplívajících různých běhových prostředí.
+
+Následující jazyky/běhová budou testovány:
+
+* C#/.NET Core 3.1
+* Java/Amazon Corretto 11
+* Python/Python 3.8
+* Typescript/NodeJS 12.x
+* Go/Go 1.x
+  
+Testy budou zkoumat následující vlastnosti:
+
+* dobu inicializace
+* dobu inicializačního běhu (cold start)
+* dobu neinicializačních běhů
+* velikost využité paměti
+
+Výsledek těchto porovnání lze využít pro volbu jazyka při použití AWS Lambda.
+
+### AWS Lambda
+
+AWS Lambda je serverless computing platforma poskytovaná Amazonem jako součást nabídky
+Amazon Web Services (AWS). Tato služba nám umožňuje využít výpočetního výkonu v AWS cloudu bez
+jakéhokoli managementu serverů a dalších zdrojů potřebných pro spuštění našeho programu.
+
+Tato služba nám dále umožňuje platit pouze za čas potřebný ke zpracování našich požadavků,
+bez nutnosti platit za čas kdy cloudová infrastruktura běží bez využití, jak tomu může
+být například v případě web serverů čekajících na požadavky od uživatelů.
+V případě AWS Lambda platíme pouze za požadavky a dobu jejich zpracování. Škálování
+je automatické a řízené AWS Lambdou. Pro implementaci obdobné funkcionality pomocí
+virtuálních strojů by bylo naší povinností zajistit správný výkon virtuálních strojů,
+za jejichž výkon se platí bez ohledu na to, zda zpracovávají požadavky či pouze 
+čekají.
+
+Cena AWS Lambdy se skládá ze dvou částí. První je pevná cena za každý požadavek, která
+je aktuálně $0.20 za 1 milion požadavků. Druhá část ceny je pak závislá na
+paměti a čase potřebném k obsluze požadavku, která je $0.0000166667 za GB-sekundu. 
+Tedy pokud naše funkce poběží 1 sekundu a bude potřebovat 1GB paměti, pak za ní
+zaplatíme $0.0000166667.
+
+Čas je počítán v inkrementech 100ms, zaokrouhlený nahoru. Tedy funkce běžící 101ms
+stojí stejně jako funkce běžící 200ms, a to 200ms krát velikost specifikované paměti.
+
+Velikost paměti je specifikována při deploymentu funkce, pro každé spuštění dané funkce je tedy
+stejná. Dostupné velikosti jsou 128MB-3008MB v inkrementech 64MB.
+Dostupný výkon procesoru je zvyšován lineárně v závislosti na velikosti speficikované paměti.
+Při velikosti 1792MB je dostupný výkon rovný jednomu vCPU.
+
+Na pozadí AWS Lambda vytváří pro spuštění našeho kódu jeden či více kontejnerů, které následně využívá pro 
+zpracování všech požadavků. Při prvním požadavku na nově vytvořenou AWS Lambda funkci,
+ či při vysokém zatížení již existujících kontejnerů, vytváří AWS Lambda nový kontejner,
+ do kterého nahrává náš tzv. deployment package, tedy zip který jsme poskytli při 
+ vytvoření funkce a který obsahuje náš kód se všemi dependencemi. Spolu s deployment
+ packagem lambda nahrává a inicializuje runtime daného jazyka. Pokud není kontejner
+ po nějaký čas využit (zhruba 10 minut bez požadavku), pak je tento kontejner zničen.
+ 
+Ke spuštění nového kontejneru dochází v reakci na požadavek, což se promítne do doby
+zpracování tohoto požadavku. Tento jev se nazývá "cold start", a pro určité patterny
+využití AWS Lambdy může být velice problematický. Kupříkladu pokud využíváme 
+AWS Lambdu pro implementaci REST API, které je využíváno pouze sporadicky, pak velká
+část požadavků bude postihnuta právě tímto cold startem.
+
+### Odlišnosti prostředí AWS Lambda
+
+Oproti spuštění dále popsaných testů v prostředí vlastního počítače má prostředí AWS Lambda
+několik odlišností. Hlavní odlišností je velmi malá velikost dostupné paměti, neboť ta je jednou z hlavních součástí 
+ceny, což nás nutí minimalizovat její velikost. Další je omezený výkon. Přestože lze i zde využít vlákna, dostupný výkon je rozdělen mezi všechna tato spuštěná vlákna.
+
+### Odlišnosti jazyků a jejich prostředí
+Jazyky  a jejich běhová prostředí lze rozdělit podle následujících vlastností:
+
+* kompilace
+* práce s knihovnami
+* management paměti
+
+V rámci kompilace lze jazyky/prostředí rozdělit následovně:
+
+* Go - Ahead-of-time kompilovaný
+* Java - JIT/interpretovaný
+* C# - JIT
+* Typescript - JIT
+* Python - interpretovaný
+
+Všechny implementace naší funkce využívají AWS SDK pro práci s dalšími službami AWS. Protože
+toto je s nějvětší pravděpodobností pravda pro většinu využití AWS Lambda, 
+poskytuje Amazon AWS SDK přednačtené do kontejneru ve kterém běží náš kód pokud daný jazyk umožňuje
+využít již knihovnu již existující na daném zařízení. 
+
+Toto je možné pouze v Typescriptu, Pythonu a C#. V ostatních jazycích je AWS SDK součástí
+deployment package a je nahráváné až při spuštění kontejneru.
+
+Tato skutečnost se projevuje na velikostech deployment packagů, které jsou následující:
+- Typescript: 3.5 kB
+- Go: 7.4 MB
+- C#: 694.7 kB
+- Java: 12 MB
+- Python: 13.2 MB
+
+Jak můžeme vidět, jsou Typescript a C# deployment package nejmenší. Bohužel se mi nepodařilo
+jednoduše automaticky získat všechny dependency Python implementace zároveň s explicitním
+vyřazením Boto3, což je AWS SDK pro Python. Proto je AWS SDK součástí mého deployment package
+pro Python.
+
+Všechny jazyky využívají Garbage collector pro management paměti. Každý jazyk pak 
+implementuje jiný Garbage collector, což se může projevit na výkonnosti daného jazyka.
+
+### Testovaný program
+
+Testovaný program je typickou ukázkou implementace resource RESTového API z našeho
+Softwarového projektu "Anzu - Molecular visualization framework". Přesněji jde o
+funkci vytvářející soubor a jeho metadata v našem cloud backendu. 
+
+Soubor využívá AWS S3 object pro ukládání dat, spolu se záznamem v AWS DynamoDB
+pro sledování přístupových práv. 
+
+Funkce nejdříve zkontroluje validitu parametrů, kterými jsou userID a filePath, tedy
+identifikátor uživatele a cesta k souboru. Po cestě k souboru požadujeme,
+aby začínala identifikátorem uživatele, tedy aby všechny soubory vlastněné jedním uživatelem
+byli logicky v jedné složce. 
+
+Následně se funkce pokusí vytvořit záznam v DynamoDB paralelně s kontrolou existence
+S3 objectu. Pokud soubor ještě neexistoval a není zjištěn žádný jiný konflikt, jako například
+soubor s identickým jménem který je právě smazáván, pak je vytvořen záznam v DynamoDB
+identifikující soubor.
+
+Poté je vytvořen S3 object pro uložení vlastních dat souboru. Při jakékoli chybě 
+se pokoušíme o rollback stavu našeho cloud backendu.
+
+Tento workload rozhodně není nijak výpočetně náročný, a většinu času stráví komunikací
+s S3 a DynamoDB. Z pohledu našeho softwarového projektu je toto reprezentativní workload
+pro většinu AWS Lambda funkcí.
+
+### Měření
+
+Měření bylo řízeno scriptem "experimets/run_tests.py" v repozitáři. 
+Počet měření byl určen podle Free Tieru poskytovaného Amazonem pro AWS, který nám
+umožňuje zdarma využít omezený počet požadavků a času ve vybraných službách AWS.
+
+V našem případě byl limitující povolený počet požadavků pro vytvoření objectu v S3,
+kde Free Tier poskytuje pouze 2000 požadavků. Spolu s debugováním implementací
+byl počet opakování testu omezen na 100.
+
+Každý test se pak skládal ze tří postupných zavolání funkce v každém jazyce.
+Pořadí jazyků bylo v každém testu vybráno náhodně, aby se předešlo nežádoucích interakcí
+mezi našimi funkcemi a službami S3 a DynamoDB, které sice byli mezi testy vyčištěny,
+ale jinak byli sdíleny mezi opakováními testů.
+
+Po každém testu byl proveden reset funkcí změnou Description, což má za následek
+zahození všech aktuálně běžících kontejnerů, což garantuje cold start v následujícím testu.
+
+
+AWS Lambda automaticky měří všechny potřebné hodnoty a ukládá je do AWS CloudWatch logů.
+Měřené hodnoty jsou:
+
+* Duration, tedy trvání běhu daného zavolání funkce
+* Billed Duration, což je duration zaokrouhlená na nejbližší větší násobek 100ms
+* Memory Size, velikost paměti alokované při deploymentu funkce
+* Max Memory Used, tedy maximum využité paměti při daném běhu
+* (pokud je běh cold start) Init Duration, trvání inicializace kontejneru při cold startu
+
+Pro naše měření jsou důležité především Duration, Max Memory Used a Init Duration, jejichž hodnoty
+jsou využity v následující sekci.
+
+Všechny funkce mají alokováno minimum paměti potřebné pro jejich běh. U všech kromě Javy
+je to 128MB, což je minium paměti možné alokovat v AWS Lambda. Java se bohužel do 128MB
+nevešla, proto jsem zdojnásobil velikost paměti kterou může využít. I přes to že toto zvětšení paměti
+zároveň zdvojnásobí výkon dostupný pro tuto funkci, neprojeví se toto nijak výrazně ve 
+výsledcích měření.
+
+Pro stažení dat z AWS CloudWatch a jejich zpracování do .csv formátu je využit script
+"experiments/process_results.py".
+
+Výsledky měření přímo stažené z CloudWatch i zpracované pomocí scriptu jsou dostupné v "experiments/100rounds".
+Tyto výsledky jsou využity pro generování grafů v následující části. 
+
+
+## Výsledky měření
+
+Naměřené výsledky lze použít pro zkoumání čtyřech kategorií:
+
+* doba inicializace
+* doba inicializačního (cold start) běhu 
+* doba neinicializačního běhu
+* využitá paměť
+
+Každou z těchto kategorií rozebereme zvlášť a následně vyhodnotíme výsledky všech
+kategorií a jejich význam pro výběr jazyka pro práci s AWS Lambda.
+
+### Doba inicializace
+
+Doba inicializace tak, jak jí měří a reportuje AWS Lambda, nám sama o sobě není 
+příliš užitečná. Přesto může ukázat na trendy vyskytující se v ostatních měřeních.
+
+Jak můžeme vidět na následujícím grafu, rozdíly mezi jazyky jsou až řádové. 
+
+```{r initruns, echo=FALSE}
+init_base_plot = ggplot(data_init, aes(x = lang, y = `init duration`, fill=lang, color=lang)) + 
+  labs(
+    title="Doba inicializace změřená AWS Lambdou",
+    x="Jazyk",
+    y="Doba inicializace"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+
+init_java_plot = init_base_plot + geom_violin(data = data_init)
+init_no_java_plot = init_base_plot + geom_violin(data = data_init_no_java)
+
+grid.arrange(init_java_plot, init_no_java_plot, ncol=2)
+```
+
+Nejhůře v této metrice, a nejen v této metrice, vycházi Java s Amazon Correto 11 runtimem. 
+Nejen že průměrný čas inicializace je o více než sekundu vyšší než u všech ostatních jazyků,
+ale také rozptyl času inicializací je největší mezi všemi jazyky. 
+
+Toto je nejspíše způsbeno velikostí Java runtime, složitostí inicializace Java runtime
+spolu s velikostí deployment package. Toto všechno je navíc umocněno nízkým výkonem
+dostupným v námi použité lambdě, což zpomaluje inicializaci.
+
+V pravém grafu můžeme vidět bližší pohled na zbylé čtyři jazyky. Můžeme vidět jasné uspořádání
+podle rychlosti, i když rozdíly mezi jednotlivými jazyky už nejsou tak markantní.
+
+C# je z podobných důvodů jako Java z těchto čtyř nejpomalejší. Důvodem této rychlosti
+je také s největší pravděpodobností velikost a složitost .NET runtime, která je umocněna malým
+výpočetním výkonem AWS Lambdy.
+
+Výsledek Pythonu je zapříčiněn velikostí Python runtimu spolu s velikostí deployment package.
+Jak jsem psal v části Odlišnosti jazyků, je teoreticky možné velikost tohoto package
+omezit odebráním závislostí na Boto3, které je poskytováno přednahrané v environmentu AWS Lambda.
+Tímto by mohl být už takhle vcelku dobrý čas inicializace nejspíš ještě zlepšen.
+Toto je pouze spekulace, neboť Go s deployment packagem porovnatelné velikosti má o mnoho
+lepší čas inicializace.
+
+Typescript ukazuje výhodu malého deployment package spolu s přiměřenou složitostí runtime.
+
+Go vychází z těchto testů vcelku předvýdatelně nejrychlejší, s nejmenším rozptylem času inicializace.
+Toto je s největší pravděpodobností díky tomu, že Go nepotřebuje ani JIT kompilátor ani interpret jako v případě předchozích jazyků, což minimalizuje velikost runtime a s tím i dobu potřebnou pro stažení a načtení
+kontejneru pro běh funkce.
+
+
+### Cold start běh
+
+Důležitější míra při zkoumání cold startu AWS Lambdy je celková doba obsluhy prvního požadavku.
+Tato míra přímo určuje chování našeho systému z pohledu uživatelů, navíc se může do velké míry odlišovat 
+od doby inicializace naměřené AWS Lambdou.
+
+Tento rozdíl můžeme vidět při porovnání grafu doby inicializačních běhů s předchozím grafem
+doby inicializace.
+
+I zde je Java nejpomalejší, tentokrát dokonce až 20krát pomalejší než nejrychlejší z jazyků.
+K faktorům zmíněným v předchozí části se zde přídává ještě interpretace prvních volání funkcí spolu
+s paralelním kompilováním daných funkcí, což s velkou pravděpodobností pohltí veškerý výkon poskytovaný AWS Lambdou.
+Dále se zde projevuje nepříjemná vlastnost Javy špatně se chovat v low memory conditions, kde dochází k degradaci výkonosti z důvodu garbage collectingu.
+
+Stejně jako v předchozím měření i zde C# z podobých důvodů jako Java zaostává za ostatními jazyky.
+C# zde nekompromisně kompiluje všechny použité funkce, což vede k sledovanému zpomalení.
+
+Překvapivě zde můžeme na třetím místě vidět Go. Zde nejspíše dochází k netriviální
+inicializaci runtime který není započítán do výsledku předchozího měření doby inicializace.
+Toto by vysvětlovalo naměřený odstup výsledku v přdchozím měření od všech ostatních jazyků.
+
+Na druhém místě máme Typescript. Zde bohužel nedokážu ani odhadnout důvody
+tohoto výsledku, protože nemám přehled o implementaci a vnitřním fungování NodeJS.
+Podle mého odhadu by tento výsledek mohl být způsoben optimalizací V8 enginu,
+který tvoří jádro NodeJS, na resposivness pro jeho použití v prohlížeči Google Chrome.
+
+Na prvním místě pak vidíme Python. Díky interpretaci zde nedochází k žádnému zpomalení
+vůči neinicializačním běhům, a tak v kobinaci s pohledem na graf trvání neinicializační
+můžeme vidět, že lze dobu inicializačního běhu popsat jako dobu inicializace plus
+dobu neinicializačního běhu.
+
+
+```{r initduration, echo=FALSE}
+ggplot(data_init, aes(x = lang, y = duration, fill=lang, color=lang)) + 
+  geom_violin() +
+  labs(
+    title="Celková doba inicializačního běhu",
+    x="Jazyk",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+
+ggplot(data_init %>% filter(lang != "java"), aes(x = lang, y = duration, fill=lang, color=lang)) + 
+  geom_violin() +
+  labs(
+    title="Celková doba inicializačního běhu",
+    x="Jazyk",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+```
+
+### Non-cold start běh
+
+Toto měření je důležité pro všechny požadavky směrované na již existující kontejner.
+Jak můžeme vidět z následujících grafů, především z grafu Doba neinicializačních běhů,
+rozdíly jednotlivých jazyků jsou zde, znovu až na Javu, minimální.
+Jak bylo popsáno v části Měření, měřená funkce tráví většinu času síťovou komunikaci s dalšími AWS službami, což
+minimalizuje výhody kompilovaných a JITovaných jazyků oproti interpretovaným. Nejvíce se zde projeví efektivita implementace serializace a deserializace dat poslaných/přijatých při komunikaci a vlastní implementace komunikace, spolu s implementací asynchroních volání funkcí v AWS SDK.
+
+Java zde stále nejspíš nezvládá low memory conditions způsobené minimalizací použité paměti. Přestože některá volání
+zvládne Java stejně rychle jako ostatní jazyky, většina volání je pomalejších a některé jsou až řádově pomalejší. Tato variace ukazuje na občasné pomalejší exekuce, jak můžeme vidět na grafu Doby běhů, kde se ve spodní části vyskytují občasné pomalejší exekuce Javy.
+
+Z grafu bez Javy můžeme vidět pořadí zbylých jazyků. Typescript je zde po Javě druhý nejpomalejší a z tohoto pohledu také nejdražší, průměrně o polovinu dražší než Python a C# a tříkrát dražší než Go. 
+
+Dále máme Python, který je díky interpretaci a reference countingu velice konzistentní ve své výkonnosti, i když o něco pomalejší než C#.
+
+C# je sice méně konzistentní něž Python, zato ale rychlejší a levnější díky JIT kompilaci metod, které při tomto
+volání již používá zkompilované. 
+
+Jak jsme mohli předpokládat, nejlépe zde vychází Go, jak v konzistenci výkonnosti tak v rychlosti. Díky kompilaci a optimalizaci před deploymentem a runtimem zde dochází k minimálnímu overheadu v podobě GC, což má za následek rychlý běh a minimální výkyvy výkonnosti.
+
+```{r normalduration, echo=FALSE}
+ggplot(data_no_init, aes(x = lang, y = duration, fill=lang, color=lang)) + 
+  geom_violin() +
+  labs(
+    title="Doba neinicializačních běhů",
+    x="Jazyk",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+
+ggplot(data_no_init %>% filter(lang != "java"), aes(x = lang, y = duration, fill=lang, color=lang)) + 
+  geom_violin() +
+  labs(
+    title="Doba neinicializačních běhů bez Javy",
+    x="Jazyk",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+```
+
+
+
+```{r steps, echo=FALSE}
+ggplot(data_numbered, aes(x = idx, y = duration, color=lang)) + 
+  geom_point() +
+  labs(
+    title="Doby běhů",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() + 
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())
+
+ggplot(data_numbered %>% filter(lang != "java"), aes(x = idx, y = duration, color=lang)) + 
+  geom_point() +
+  labs(
+    title="Doby běhů bez Javy",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() + 
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())
+
+ggplot(data_numbered %>% filter(lang != "java") %>% filter(is.na(`init duration`)), aes(x = idx, y = duration, color=lang)) + 
+  geom_point() +
+  labs(
+    title="Doby neinicializačních běhů bez Javy",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() + 
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())
+
+ggplot(data_numbered %>% filter(lang != "java" & idx <= 18), aes(x = idx, y = duration, color=lang)) + 
+  geom_point() +
+  labs(
+    title="Doby prvních 20 běhů bez Javy",
+    y="Doba běhu"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "ms")) +
+  theme_linedraw() + 
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())
+```
+
+Na tomto posledním grafu můžeme vidět trojice volání v rámci jednoho testu. Jak bylo vysvětleno v sekci Měření, je první volání je ovlivněno cold startem. Následně pak dochází k dvěma voláním bez cold startu,
+které ukazují chování při konstatním zatížení infrastruktury. Zajímavé je si zde všimnout
+chování mezi těmito voláními.
+
+Pro C# zde můžeme vidět jasný pattern, kdy druhé volání je pomalejší než třetí volání, což může ukazovat
+na určité zrychlování v rámci následujících volání. Vzhledem k mému poněří o fungování .NET runtime, kde 
+dochází ke kompilaci při prvním zavolání funkce, nedává toto chování z tohoto pohledu příliš smysl.
+Další možnost je běh Garbage collectoru při druhém zavolání, kde GC musí odalokovat paměť spotřebovanou
+pro inicializaci runtime z prvního zavolání.
+
+### Využitá paměť
+
+Využitá paměť do jisté míry odpovídá času inicializace, jak můžeme vidět při porovnání s grafem Doba inicializace. To nám napovídá čím je způsobena naměřená hodnota času inicializace vzhledem k velikosti runtime, AWS SDK pro daný jazyk atd.
+
+```{r memory, echo=FALSE, results="hide"}
+data_memory <- data %>% group_by(lang) %>% summarize(memmean = mean(`max memory`), .groups="drop_last")
+ggplot(data_memory, aes (x = lang, y = memmean, fill=lang, color=lang)) + 
+  geom_bar(stat="identity", width = 0.5) + 
+  labs(
+    title="Maximum paměti alokované funkcí",
+    x="Jazyk",
+    y="Paměť"
+  ) +
+  scale_y_continuous(labels = scales::unit_format(unit = "MB")) +
+  theme_linedraw() +
+  theme(legend.position="none")
+```
+
+## Závěr
+
+Naměřená data nám ukazují, že prostředí AWS Lambdy je svou omezenou pamětí a možným overheadem při
+cold startu odlišné od prostředí při lokálním spuštění programu.
+
+Podle našich požadavků lze naměřená data použít pro výběr jazyka pro implementaci používající AWS Lambdu.
+
+Pokud naši uživatelé budou schopni přežít odezvu až 1.5 sekundy při cold startu, pak se jasným vítězem
+stává jazyk a runtime Go. Tento jazyk poskytuje nejrychlejší a nejúspornější implementaci 
+dané funkcionality.
+
+Pokud potřebujeme především konzistenci i při cold startu, pak se jako nejlepší jeví
+jazyk Python s Python 3.8 runtimem. DÍky tomu že je tento jazyk interpretován poskytuje
+podobnou výkonnost jak při cold startu, tak při normálním běhu.
+
+Pokud potřebujeme konzistenci ale rádi bychom použili staticky typovaný jazyk, pak by naší volbou měl být
+jazyk Typescript s runtimem NodeJS 12.x. Tento jazyk poskytuje lepší cold start time než Go, spolu s 
+konzistentním, ale pomalejším normálním během než Go a Python.
+
+Pokud nemůžeme použít Go, nevadí nám dlouhý cold start a potřebujeme rychlý normální běh, pak je nejlepší volbou jazyk C# a platforma .NET Core 3.1. 
+
+Bohužel zde špatně dopadla Java. Je možné, že chyba je v naší implementaci funkce a ne v Javě samotné, ale 
+low memory conditions  s krátkou dobou běhu neodpovídají předpokladům správného využití Javy. Z tohoto důvodu nemůžu doporučit využití Javy pro námi testovaný účel v kombinaci s AWS Lambdou.
+
+## Disclaimer
+
+Odůvodnění chování v tomto textu je založené pouze na mém povědomí o fungování dané
+platformy a pozorování naměřených výsledků. Bohužel mi nezbyl čas na žádná další měření.
